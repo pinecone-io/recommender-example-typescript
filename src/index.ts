@@ -10,7 +10,6 @@ import * as dfd from "danfojs-node";
 import { embedder } from "embeddings.ts";
 import loadCSVFile from "utils/csvLoader.ts";
 import splitFile from "utils/fileSplitter.ts";
-import { SquadRecord, loadSquad } from "./utils/squadLoader.js";
 
 interface ArticleRecord {
   title: string;
@@ -18,9 +17,8 @@ interface ArticleRecord {
   publication: string;
   url: string;
   author: string;
+  section: string;
 }
-
-
 
 dotenv.config();
 const { createIndexIfNotExists, chunkedUpsert } = utils;
@@ -42,12 +40,13 @@ async function* processInChunks(dataFrame: dfd.DataFrame, chunkSize: number): As
     const chunk = await getChunk(dataFrame, i, chunkSize);
     const records = dfd.toJSON(chunk) as ArticleRecord[];
     yield records.map((record: ArticleRecord) => new Document({
-      pageContent: record.article,
+      pageContent: record.article || "",
       metadata: {
-        url: record["url"],
-        title: record["title"],
-        publication: record["publication"],
-        author: record["author"],
+        section: record["section"] || "",
+        url: record["url"] || "",
+        title: record["title"] || "",
+        publication: record["publication"] || "",
+        author: record["author"] || "",
       },
     }));
   }
@@ -67,17 +66,16 @@ async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
 }
 
 try {
-  // const fileParts = await splitFile("./all-the-news-2-1.csv", 1000000);
-  // const firstFile = fileParts[0];
+  const fileParts = await splitFile("./all-the-news-2-1.csv", 1000000);
+  const firstFile = fileParts[0];
 
-  const data = await loadCSVFile(`./all-the-news-2-1.csv.1`);
-  data.head().print();
-
-  // squadData.print();
+  // For this example, we will use the first file part to create the index
+  const data = await loadCSVFile(firstFile);
+  const clean = data.dropNa() as dfd.DataFrame;
   await createIndexIfNotExists(pineconeClient, indexName, 384);
   progressBar.start(data.shape[0], 0);
   await embedder.init("Xenova/all-MiniLM-L6-v2");
-  await embedAndUpsert(data, 1);
+  await embedAndUpsert(clean, 1);
 
   progressBar.stop();
   console.log(`Inserted ${progressBar.getTotal()} documents into index ${indexName}`);

@@ -1,9 +1,10 @@
 import { randomUUID } from "crypto";
-import { Pipeline, pipeline } from "@xenova/transformers";
+import { Pipeline, pipeline, AutoConfig } from "@xenova/transformers";
 import { Vector } from "@pinecone-database/pinecone";
 import { Document } from 'langchain/document';
 import { EmbeddingsParams, Embeddings } from "langchain/embeddings/base";
 import { sliceIntoChunks } from "./utils/util.js";
+
 
 type DocumentOrString = Document | string;
 
@@ -16,25 +17,34 @@ class Embedder {
   private pipe: Pipeline;
 
   async init(modelName: string) {
+    const config = await AutoConfig.from_pretrained(modelName);
     this.pipe = await pipeline(
       "embeddings",
       modelName,
-      { quantized: false }
+      {
+        quantized: false,
+        config
+      },
+
     );
   }
 
   // Embeds a text and returns the embedding
   async embed(text: string, metadata?: Record<string, unknown>): Promise<Vector> {
-    const result = await this.pipe(text);
-    const id = (metadata?.id as string) || randomUUID();
-
-    return {
-      id,
-      metadata: metadata || {
-        text,
-      },
-      values: Array.from(result.data),
-    };
+    try {
+      const result = await this.pipe(text, { pooling: 'mean', normalize: true });
+      const id = (metadata?.id as string) || randomUUID();
+      return {
+        id,
+        metadata: metadata || {
+          text,
+        },
+        values: Array.from(result.data) as number[],
+      };
+    } catch (e) {
+      console.log(`Error embedding text: ${text}, ${e}`);
+      throw e;
+    }
   }
 
   // Embeds a batch of documents and calls onDoneBatch with the embeddings
