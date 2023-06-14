@@ -47,6 +47,7 @@ async function* processInChunks(dataFrame: dfd.DataFrame, chunkSize: number): As
         title: record["title"] || "",
         publication: record["publication"] || "",
         author: record["author"] || "",
+        article: record.article || "",
       },
     }));
   }
@@ -66,7 +67,7 @@ async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
 }
 
 try {
-  const fileParts = await splitFile("./all-the-news-2-1.csv", 1000000);
+  const fileParts = await splitFile("./data/all-the-news-2-1.csv", 1000000);
   const firstFile = fileParts[0];
 
   // For this example, we will use the first file part to create the index

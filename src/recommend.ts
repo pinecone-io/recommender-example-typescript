@@ -1,6 +1,7 @@
 import { getEnv } from "utils/util.ts";
 import { getPineconeClient } from "utils/pinecone.ts";
 import { embedder } from "embeddings.ts";
+import * as dfd from "danfojs-node";
 
 const indexName = getEnv("PINECONE_INDEX");
 const pineconeClient = await getPineconeClient();
@@ -53,4 +54,13 @@ const recommendations = await pineconeIndex.query({
   }
 });
 
-console.log(recommendations?.matches?.map((result: any) => result.metadata));
+// select the first 10 results
+
+const results = new dfd.DataFrame(queryResult?.matches?.slice(0, 10).map((result: any) => result.metadata));
+
+results.print();
+
+
+const recs = new dfd.DataFrame(recommendations?.matches?.map((result: any) => result.metadata));
+
+recs.print();
