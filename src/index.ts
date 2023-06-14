@@ -35,28 +35,54 @@ async function getChunk(df: dfd.DataFrame, start: number, size: number): Promise
   return await df.head(start + size).tail(size);
 }
 
-async function* processInChunks(dataFrame: dfd.DataFrame, chunkSize: number): AsyncGenerator<Document[]> {
+// async function* processInChunks(dataFrame: dfd.DataFrame, chunkSize: number): AsyncGenerator<Document[]> {
+//   for (let i = 0; i < dataFrame.shape[0]; i += chunkSize) {
+//     const chunk = await getChunk(dataFrame, i, chunkSize);
+//     const records = dfd.toJSON(chunk) as ArticleRecord[];
+//     yield records.map((record: ArticleRecord) => new Document({
+//       pageContent: record["article"],
+//       metadata: {
+//         section: record["section"],
+//         url: record["url"],
+//         title: record["title"],
+//         publication: record["publication"],
+//         author: record["author"],
+//         article: record["article"],
+//       },
+//     }));
+//   }
+// }
+
+async function* processInChunks<T, M extends keyof T, P extends keyof T>(
+  dataFrame: dfd.DataFrame,
+  chunkSize: number,
+  metadataFields: M[],
+  pageContentField: P
+): AsyncGenerator<Document[]> {
   for (let i = 0; i < dataFrame.shape[0]; i += chunkSize) {
     const chunk = await getChunk(dataFrame, i, chunkSize);
-    const records = dfd.toJSON(chunk) as ArticleRecord[];
-    yield records.map((record: ArticleRecord) => new Document({
-      pageContent: record.article || "",
-      metadata: {
-        section: record["section"] || "",
-        url: record["url"] || "",
-        title: record["title"] || "",
-        publication: record["publication"] || "",
-        author: record["author"] || "",
-        article: record.article || "",
-      },
-    }));
+    const records = dfd.toJSON(chunk) as T[];
+    yield records.map((record: T) => {
+      const metadata: Partial<Record<M, T[M]>> = {};
+      for (const field of metadataFields) {
+        metadata[field] = record[field];
+      }
+      return new Document({
+        pageContent: record[pageContentField] as string,
+        metadata,
+      });
+    });
   }
 }
 
 async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
-  const chunkGenerator = processInChunks(dataFrame, chunkSize);
+  const chunkGenerator = processInChunks<ArticleRecord, 'section' | 'url' | 'title' | 'publication' | 'author' | 'article', 'article'>(
+    dataFrame,
+    100,
+    ['section', 'url', 'title', 'publication', 'author', 'article'],
+    'article'
+  );
   const index = pineconeClient.Index(indexName);
-
 
   for await (const documents of chunkGenerator) {
     await embedder.embedBatch(documents, chunkSize, async (embeddings: Vector[]) => {
@@ -74,10 +100,9 @@ try {
   const data = await loadCSVFile(firstFile);
   const clean = data.dropNa() as dfd.DataFrame;
   await createIndexIfNotExists(pineconeClient, indexName, 384);
-  progressBar.start(data.shape[0], 0);
+  progressBar.start(clean.shape[0], 0);
   await embedder.init("Xenova/all-MiniLM-L6-v2");
   await embedAndUpsert(clean, 1);
-
   progressBar.stop();
   console.log(`Inserted ${progressBar.getTotal()} documents into index ${indexName}`);
 
