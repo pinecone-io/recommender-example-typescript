@@ -7,17 +7,6 @@ async function loadCSVFile(
   try {
     // Get csv file absolute path
     const csvAbsolutePath = await fs.realpath(filePath);
-
-    // try {
-    //   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    //   // @ts-ignore
-    //   fs.writeFile(filePath, csvAbsolutePath, (err) => {
-    //     if (err) throw err;
-    //   });
-    // } catch (err) {
-    //   console.log(err);
-    // }
-
     const df: dfd.DataFrame = (await dfd.readCSV(csvAbsolutePath)) as dfd.DataFrame;
 
     // Create a readable stream from the CSV file

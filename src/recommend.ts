@@ -1,17 +1,20 @@
-import { getEnv } from "utils/util.ts";
+/* eslint-disable import/no-extraneous-dependencies */
+import { getEnv, getQueryingCommandLineArguments } from "utils/util.ts";
 import { getPineconeClient } from "utils/pinecone.ts";
 import { embedder } from "embeddings.ts";
-import * as dfd from "danfojs-node";
+import { Table } from 'console-table-printer';
+import { ScoredVector } from "@pinecone-database/pinecone";
+
 
 const indexName = getEnv("PINECONE_INDEX");
 const pineconeClient = await getPineconeClient();
-
 const pineconeIndex = pineconeClient.Index(indexName);
 
 await embedder.init("Xenova/all-MiniLM-L6-v2");
 
-// We create a "dummy" query to build a user with an interest in "Sports"
-const query = "~~~";
+const { query, section } = getQueryingCommandLineArguments();
+
+// We create a simulated a user with an interest given a query and a specific section
 const queryEmbedding = await embedder.embed(query);
 
 const queryResult = await pineconeIndex.query({
@@ -21,14 +24,14 @@ const queryResult = await pineconeIndex.query({
     includeValues: true,
     namespace: "default",
     filter: {
-      section: { "$eq": "Sports" }
+      section: { "$eq": section }
     },
-    topK: 1000
+    topK: 10
   }
 });
 
 // We extract the vectors of the results
-const userVectors = queryResult?.matches?.map((result: any) => result.values as number[]);
+const userVectors = queryResult?.matches?.map((result: ScoredVector) => result.values as number[]);
 
 // A couple of functions to calculate mean vector
 const mean = (arr: number[]): number => arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -41,6 +44,7 @@ const meanVector = (vectors: number[][]): number[] => {
 };
 
 // We calculate the mean vector of the results
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const meanVec = meanVector(userVectors!);
 
 // We query the index with the mean vector to get recommendations for the user
@@ -54,13 +58,44 @@ const recommendations = await pineconeIndex.query({
   }
 });
 
-// select the first 10 results
 
-const results = new dfd.DataFrame(queryResult?.matches?.slice(0, 10).map((result: any) => result.metadata));
+const userPreferences = new Table({
+  columns: [
+    { name: "title", alignment: "left" },
+    { name: "author", alignment: "left" },
+    { name: "section", alignment: "left" },
+  ]
+});
 
-results.print();
+const userRecommendations = new Table({
+  columns: [
+    { name: "title", alignment: "left" },
+    { name: "author", alignment: "left" },
+    { name: "section", alignment: "left" },
+  ]
+});
 
+queryResult?.matches?.slice(0, 10).forEach((result: any) => {
+  const { title, article, publication, section } = result.metadata;
+  userPreferences.addRow({
+    title,
+    article: `${article.slice(0, 70)}...`,
+    publication,
+    section
+  });
+});
 
-const recs = new dfd.DataFrame(recommendations?.matches?.map((result: any) => result.metadata));
+console.log("========== User Preferences ==========");
+userPreferences.printTable();
 
-recs.print();
+recommendations?.matches?.slice(0, 10).forEach((result: any) => {
+  const { title, article, publication, section } = result.metadata;
+  userRecommendations.addRow({
+    title,
+    article: `${article.slice(0, 70)}...`,
+    publication,
+    section
+  });
+});
+console.log("=========== Recommendations ==========");
+userRecommendations.printTable();

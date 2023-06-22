@@ -18,15 +18,9 @@ module.exports = {
     "@typescript-eslint/no-shadow": 0,
     "@typescript-eslint/no-use-before-define": ["error", "nofunc"],
     "@typescript-eslint/no-unused-vars": ["warn", { args: "none" }],
+    "@typescript-eslint/no-explicit-any": 0,
     camelcase: 0,
-    "import/no-extraneous-dependencies": [
-      "error",
-      {
-        devDependencies: false,
-        optionalDependencies: false,
-        peerDependencies: false,
-      },
-    ],
+    "import/no-extraneous-dependencies": 0,
     "class-methods-use-this": 0,
     "import/extensions": 0,
     "import/no-unresolved": 0,
