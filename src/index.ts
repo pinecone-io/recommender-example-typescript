@@ -12,6 +12,7 @@ import loadCSVFile from "utils/csvLoader.ts";
 import splitFile from "utils/fileSplitter.ts";
 
 interface ArticleRecord {
+  index: number,
   title: string;
   article: string;
   publication: string;
@@ -19,6 +20,8 @@ interface ArticleRecord {
   author: string;
   section: string;
 }
+
+
 
 dotenv.config();
 const { createIndexIfNotExists, chunkedUpsert } = utils;
@@ -35,23 +38,6 @@ async function getChunk(df: dfd.DataFrame, start: number, size: number): Promise
   return await df.head(start + size).tail(size);
 }
 
-// async function* processInChunks(dataFrame: dfd.DataFrame, chunkSize: number): AsyncGenerator<Document[]> {
-//   for (let i = 0; i < dataFrame.shape[0]; i += chunkSize) {
-//     const chunk = await getChunk(dataFrame, i, chunkSize);
-//     const records = dfd.toJSON(chunk) as ArticleRecord[];
-//     yield records.map((record: ArticleRecord) => new Document({
-//       pageContent: record["article"],
-//       metadata: {
-//         section: record["section"],
-//         url: record["url"],
-//         title: record["title"],
-//         publication: record["publication"],
-//         author: record["author"],
-//         article: record["article"],
-//       },
-//     }));
-//   }
-// }
 
 async function* processInChunks<T, M extends keyof T, P extends keyof T>(
   dataFrame: dfd.DataFrame,
@@ -93,12 +79,13 @@ async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
 }
 
 try {
-  const fileParts = await splitFile("./data/all-the-news-2-1.csv", 1000000);
+  const fileParts = await splitFile("./data/all-the-news-2-1.csv", 500000);
   const firstFile = fileParts[0];
 
   // For this example, we will use the first file part to create the index
   const data = await loadCSVFile(firstFile);
   const clean = data.dropNa() as dfd.DataFrame;
+  clean.head().print();
   await createIndexIfNotExists(pineconeClient, indexName, 384);
   progressBar.start(clean.shape[0], 0);
   await embedder.init("Xenova/all-MiniLM-L6-v2");
