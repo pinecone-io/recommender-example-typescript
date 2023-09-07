@@ -8,7 +8,7 @@ The goal is to create a recommendation engine that retrieves the best article re
 npm install
 ```
 
-## Importing the Libraries
+## Dependencies
 
 We'll start by importing the necessary libraries. 
 
@@ -19,16 +19,6 @@ We'll start by importing the necessary libraries.
 - We'll use the `cli-progress` library to display a progress bar.
 
 To load the dataset used in the example, we'll be using a utility called `squadLoader.js`.
-
-```typescript
-import { Vector, utils } from "@pinecone-database/pinecone";
-import { getEnv } from "utils/util.ts";
-import { getPineconeClient } from "utils/pinecone.ts";
-import cliProgress from "cli-progress";
-import { Document } from "langchain/document";
-import * as dfd from "danfojs-node";
-import { embedder } from "embeddings.ts";
-```
 
 ## Upload articles
 
@@ -97,18 +87,19 @@ Next we'll create a function that will generate the embeddings and upsert them i
 
 ```typescript
 async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
-  const chunkGenerator = processInChunks(dataFrame, chunkSize);
-  const index = pineconeClient.Index(indexName);
+  const chunkGenerator = processInChunks<ArticleRecord, 'section' | 'url' | 'title' | 'publication' | 'author' | 'article', 'article'>(
+    dataFrame,
+    100,
+    ['section', 'url', 'title', 'publication', 'author', 'article'],
+    'article'
+  );
+  const index = pinecone.index(indexName);
 
   for await (const documents of chunkGenerator) {
-    await embedder.embedBatch(
-      documents,
-      chunkSize,
-      async (embeddings: Vector[]) => {
-        await chunkedUpsert(index, embeddings, "default");
-        progressBar.increment(embeddings.length);
-      }
-    );
+    await embedder.embedBatch(documents, chunkSize, async (embeddings: PineconeRecord[]) => {
+      await chunkedUpsert(index, embeddings, "default");
+      progressBar.increment(embeddings.length);
+    });
   }
 }
 ```
@@ -143,26 +134,35 @@ We will query the index for the an imagined user. We'll simulate a set of the ar
 
 ```typescript
 const indexName = getEnv("PINECONE_INDEX");
-const pineconeClient = await getPineconeClient();
-const pineconeIndex = pineconeClient.Index(indexName);
+const pinecone = new Pinecone();
+
+// Ensure the index exists
+try {
+  const description = await pinecone.describeIndex(indexName);
+  if (!description.status?.ready) {
+    throw `Index not ready, description was ${JSON.stringify(description)}`
+  }
+} catch (e) {
+  console.log('An error occurred. Run "npm run index" to load data into the index before querying.')
+  throw e;
+}
+
+const index = pinecone.index<ArticleRecord>(indexName).namespace('default');
 
 await embedder.init("Xenova/all-MiniLM-L6-v2");
 
-// We create a simulated a user with an interest given a query and a specific section
 const { query, section } = getQueryingCommandLineArguments();
-const queryEmbedding = await embedder.embed(query);
 
-const queryResult = await pineconeIndex.query({
-  queryRequest: {
+// We create a simulated user with an interest given a query and a specific section
+const queryEmbedding = await embedder.embed(query)
+const queryResult = await index.query({
     vector: queryEmbedding.values,
     includeMetadata: true,
     includeValues: true,
-    namespace: "default",
     filter: {
-      section: { $eq: section },
+      section: { "$eq": section }
     },
-    topK: 10,
-  },
+    topK: 10
 });
 ```
 
@@ -170,22 +170,20 @@ We'll calculate the **mean** vector given the results of the query. The mean vec
 
 ```typescript
 // We extract the vectors of the results
-const userVectors = queryResult?.matches?.map(
-  (result: ScoredVector) => result.values as number[]
-);
+const userVectors = queryResult?.matches?.map((result: ScoredPineconeRecord<ArticleRecord>) => result.values);
 
 // A couple of functions to calculate mean vector
-const mean = (arr: number[]): number =>
-  arr.reduce((a, b) => a + b, 0) / arr.length;
+const mean = (arr: number[]): number => arr.reduce((a, b) => a + b, 0) / arr.length;
 const meanVector = (vectors: number[][]): number[] => {
   const { length } = vectors[0];
 
   return Array.from({ length }).map((_, i) =>
-    mean(vectors.map((vec) => vec[i]))
+    mean(vectors.map(vec => vec[i]))
   );
 };
 
 // We calculate the mean vector of the results
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const meanVec = meanVector(userVectors!);
 ```
 

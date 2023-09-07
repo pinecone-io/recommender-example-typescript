@@ -10,16 +10,7 @@ import { embedder } from "embeddings.ts";
 import loadCSVFile from "utils/csvLoader.ts";
 import splitFile from "utils/fileSplitter.ts";
 import { chunkedUpsert } from './utils/chunkedUpsert.ts';
-
-type ArticleRecord = {
-  index: number,
-  title: string;
-  article: string;
-  publication: string;
-  url: string;
-  author: string;
-  section: string;
-}
+import type { ArticleRecord } from "types.ts";
 
 dotenv.config();
 
