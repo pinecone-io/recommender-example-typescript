@@ -50,7 +50,7 @@ async function* processInChunks<T, M extends keyof T, P extends keyof T>(
 async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
   const chunkGenerator = processInChunks<ArticleRecord, 'section' | 'url' | 'title' | 'publication' | 'author' | 'article', 'article'>(
     dataFrame,
-    100,
+    chunkSize,
     ['section', 'url', 'title', 'publication', 'author', 'article'],
     'article'
   );
