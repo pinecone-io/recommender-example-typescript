@@ -10,9 +10,13 @@ npm install
 
 ## Importing the Libraries
 
-We'll start by importing the necessary libraries. We'll be using the `@pinecone-database/pinecone` library to interact with Pinecone. We'll also be using the `danfojs-node` library to load the data into an easy to manipulate dataframe. We'll use the `Document` type from Langchain to keep the data structure consistent across the indexing process and retrieval agent.
+We'll start by importing the necessary libraries. 
 
-We'll be using the `Embedder` class found in `embeddings.ts` to embed the data We'll also be using the `cli-progress` library to display a progress bar.
+- We'll use the `@pinecone-database/pinecone` library to interact with Pinecone. 
+- We'll use the `danfojs-node` library to load the data into an easy to manipulate dataframe. 
+- We'll use the `Document` type from Langchain to keep the data structure consistent across the indexing process and retrieval agent.
+- We'll use the `Embedder` class found in `embeddings.ts` to embed the data. 
+- We'll use the `cli-progress` library to display a progress bar.
 
 To load the dataset used in the example, we'll be using a utility called `squadLoader.js`.
 
@@ -24,7 +28,6 @@ import cliProgress from "cli-progress";
 import { Document } from "langchain/document";
 import * as dfd from "danfojs-node";
 import { embedder } from "embeddings.ts";
-import { SquadRecord, loadSquad } from "./utils/squadLoader.js";
 ```
 
 ## Upload articles
