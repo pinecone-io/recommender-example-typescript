@@ -1,43 +1,29 @@
 /* eslint-disable import/no-extraneous-dependencies */
 /* eslint-disable dot-notation */
 import * as dotenv from "dotenv";
-import { Vector, utils } from '@pinecone-database/pinecone';
+import { Pinecone, type PineconeRecord } from '@pinecone-database/pinecone';
 import { getEnv } from "utils/util.ts";
-import { getPineconeClient } from "utils/pinecone.ts";
 import cliProgress from "cli-progress";
 import { Document } from 'langchain/document';
 import * as dfd from "danfojs-node";
 import { embedder } from "embeddings.ts";
 import loadCSVFile from "utils/csvLoader.ts";
 import splitFile from "utils/fileSplitter.ts";
-
-interface ArticleRecord {
-  index: number,
-  title: string;
-  article: string;
-  publication: string;
-  url: string;
-  author: string;
-  section: string;
-}
-
-
+import { chunkedUpsert } from './utils/chunkedUpsert.ts';
+import type { ArticleRecord } from "types.ts";
 
 dotenv.config();
-const { createIndexIfNotExists, chunkedUpsert } = utils;
 
 const progressBar = new cliProgress.SingleBar({}, cliProgress.Presets.shades_classic);
 
 // Index setup
 const indexName = getEnv("PINECONE_INDEX");
-const pineconeClient = await getPineconeClient();
-
+const pinecone = new Pinecone();
 
 async function getChunk(df: dfd.DataFrame, start: number, size: number): Promise<dfd.DataFrame> {
   // eslint-disable-next-line no-return-await
   return await df.head(start + size).tail(size);
 }
-
 
 async function* processInChunks<T, M extends keyof T, P extends keyof T>(
   dataFrame: dfd.DataFrame,
@@ -68,10 +54,10 @@ async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
     ['section', 'url', 'title', 'publication', 'author', 'article'],
     'article'
   );
-  const index = pineconeClient.Index(indexName);
+  const index = pinecone.index(indexName);
 
   for await (const documents of chunkGenerator) {
-    await embedder.embedBatch(documents, chunkSize, async (embeddings: Vector[]) => {
+    await embedder.embedBatch(documents, chunkSize, async (embeddings: PineconeRecord[]) => {
       await chunkedUpsert(index, embeddings, "default");
       progressBar.increment(embeddings.length);
     });
@@ -86,7 +72,13 @@ try {
   const data = await loadCSVFile(firstFile);
   const clean = data.dropNa() as dfd.DataFrame;
   clean.head().print();
-  await createIndexIfNotExists(pineconeClient, indexName, 384);
+
+  // Create the index if it doesn't already exist
+  const indexList = await pinecone.listIndexes();
+  if (indexList.indexOf({ name: indexName }) === -1) {
+    await pinecone.createIndex({ name: indexName, dimension: 384, waitUntilReady: true })
+  }
+
   progressBar.start(clean.shape[0], 0);
   await embedder.init("Xenova/all-MiniLM-L6-v2");
   await embedAndUpsert(clean, 1);

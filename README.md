@@ -8,26 +8,27 @@ The goal is to create a recommendation engine that retrieves the best article re
 npm install
 ```
 
-## Importing the Libraries
+## Required configuration
 
-We'll start by importing the necessary libraries. We'll be using the `@pinecone-database/pinecone` library to interact with Pinecone. We'll also be using the `danfojs-node` library to load the data into an easy to manipulate dataframe. We'll use the `Document` type from Langchain to keep the data structure consistent across the indexing process and retrieval agent.
+In order to run this example, you have to supply the Pinecone credentials needed to interact with the Pinecone API. You can find these credentials in the [Pinecone web console](https://app.pinecone.io) under **API Keys**. This project uses `dotenv` to easily load values from the `.env` file into the environment when executing. 
 
-We'll be using the `Embedder` class found in `embeddings.ts` to embed the data We'll also be using the `cli-progress` library to display a progress bar.
+Copy the template file:
 
-To load the dataset used in the example, we'll be using a utility called `squadLoader.js`.
-
-```typescript
-import { Vector, utils } from "@pinecone-database/pinecone";
-import { getEnv } from "utils/util.ts";
-import { getPineconeClient } from "utils/pinecone.ts";
-import cliProgress from "cli-progress";
-import { Document } from "langchain/document";
-import * as dfd from "danfojs-node";
-import { embedder } from "embeddings.ts";
-import { SquadRecord, loadSquad } from "./utils/squadLoader.js";
+```sh
+cp .env.example .env
 ```
 
-## Upload articles
+And fill in your API key and environment details:
+
+```sh
+PINECONE_API_KEY=<your-api-key>
+PINECONE_ENVIRONMENT=<your-environment>
+PINECONE_INDEX=article-recommendations
+```
+
+`PINECONE_INDEX` is the name of the index where this demo will store and query embeddings. You can change `PINECONE_INDEX` to any name you like, but make sure the name not going to collide with any indexes you are already using.
+
+## Data preparation
 
 Next, we will prepare data for the Pinecone vector index, and insert it in batches.
 
@@ -44,7 +45,9 @@ mv all-the-news-2-1.csv data/.
 
 ## Create Vector embeddings
 
-Since the dataset could be pretty big, we'll use a generator function that will yield chunks of data to be processed.
+To load data into our index, we need to create embeddings and upsert records into Pinecone. Run `npm run index` to do that in this project.
+
+Since the dataset could be pretty big, this project uses a generator function that will yield chunks of data to be processed.
 
 ```typescript
 async function* processInChunks<T, M extends keyof T, P extends keyof T>(
@@ -79,7 +82,7 @@ Here are the parameters the function accepts:
 - `metadataFields`: This is an array of field names (which are keys of `T`) to be included in the metadata of each `Document`.
 - `pageContentField`: This is the field name (which is a key of `T`) to be used for the page content of each `Document`.
 
-Here's what it the function does:
+Here's what the function does:
 
 1. It loops over the DataFrame in chunks of size `chunkSize`.
 2. For each chunk, it converts the chunk to JSON to get an array of records (of type `T`).
@@ -94,18 +97,19 @@ Next we'll create a function that will generate the embeddings and upsert them i
 
 ```typescript
 async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
-  const chunkGenerator = processInChunks(dataFrame, chunkSize);
-  const index = pineconeClient.Index(indexName);
+  const chunkGenerator = processInChunks<ArticleRecord, 'section' | 'url' | 'title' | 'publication' | 'author' | 'article', 'article'>(
+    dataFrame,
+    100,
+    ['section', 'url', 'title', 'publication', 'author', 'article'],
+    'article'
+  );
+  const index = pinecone.index(indexName);
 
   for await (const documents of chunkGenerator) {
-    await embedder.embedBatch(
-      documents,
-      chunkSize,
-      async (embeddings: Vector[]) => {
-        await chunkedUpsert(index, embeddings, "default");
-        progressBar.increment(embeddings.length);
-      }
-    );
+    await embedder.embedBatch(documents, chunkSize, async (embeddings: PineconeRecord[]) => {
+      await chunkedUpsert(index, embeddings, "default");
+      progressBar.increment(embeddings.length);
+    });
   }
 }
 ```
@@ -127,7 +131,12 @@ const clean = data.dropNa() as dfd.DataFrame;
 Now we'll create the Pinecone index and kick off the embedding and upserting process.
 
 ```typescript
-await createIndexIfNotExists(pineconeClient, indexName, 384);
+// Create the index if it doesn't already exist
+const indexList = await pinecone.listIndexes();
+if (indexList.indexOf({ name: indexName }) === -1) {
+  await pinecone.createIndex({ name: indexName, dimension: 384, waitUntilReady: true })
+}
+
 progressBar.start(clean.shape[0], 0);
 await embedder.init("Xenova/all-MiniLM-L6-v2");
 await embedAndUpsert(clean, 1);
@@ -140,26 +149,35 @@ We will query the index for the an imagined user. We'll simulate a set of the ar
 
 ```typescript
 const indexName = getEnv("PINECONE_INDEX");
-const pineconeClient = await getPineconeClient();
-const pineconeIndex = pineconeClient.Index(indexName);
+const pinecone = new Pinecone();
+
+// Ensure the index exists
+try {
+  const description = await pinecone.describeIndex(indexName);
+  if (!description.status?.ready) {
+    throw `Index not ready, description was ${JSON.stringify(description)}`
+  }
+} catch (e) {
+  console.log('An error occurred. Run "npm run index" to load data into the index before querying.')
+  throw e;
+}
+
+const index = pinecone.index<ArticleRecord>(indexName).namespace('default');
 
 await embedder.init("Xenova/all-MiniLM-L6-v2");
 
-// We create a simulated a user with an interest given a query and a specific section
 const { query, section } = getQueryingCommandLineArguments();
-const queryEmbedding = await embedder.embed(query);
 
-const queryResult = await pineconeIndex.query({
-  queryRequest: {
+// We create a simulated user with an interest given a query and a specific section
+const queryEmbedding = await embedder.embed(query)
+const queryResult = await index.query({
     vector: queryEmbedding.values,
     includeMetadata: true,
     includeValues: true,
-    namespace: "default",
     filter: {
-      section: { $eq: section },
+      section: { "$eq": section }
     },
-    topK: 10,
-  },
+    topK: 10
 });
 ```
 
@@ -167,22 +185,20 @@ We'll calculate the **mean** vector given the results of the query. The mean vec
 
 ```typescript
 // We extract the vectors of the results
-const userVectors = queryResult?.matches?.map(
-  (result: ScoredVector) => result.values as number[]
-);
+const userVectors = queryResult?.matches?.map((result: ScoredPineconeRecord<ArticleRecord>) => result.values);
 
 // A couple of functions to calculate mean vector
-const mean = (arr: number[]): number =>
-  arr.reduce((a, b) => a + b, 0) / arr.length;
+const mean = (arr: number[]): number => arr.reduce((a, b) => a + b, 0) / arr.length;
 const meanVector = (vectors: number[][]): number[] => {
   const { length } = vectors[0];
 
   return Array.from({ length }).map((_, i) =>
-    mean(vectors.map((vec) => vec[i]))
+    mean(vectors.map(vec => vec[i]))
   );
 };
 
 // We calculate the mean vector of the results
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 const meanVec = meanVector(userVectors!);
 ```
 

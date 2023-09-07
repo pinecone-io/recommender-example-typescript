@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { Pipeline, pipeline, AutoConfig } from "@xenova/transformers";
-import { Vector } from "@pinecone-database/pinecone";
-import { Document } from 'langchain/document';
+import type { PineconeRecord, RecordMetadata } from "@pinecone-database/pinecone";
+import type { Document } from 'langchain/document';
 import { EmbeddingsParams, Embeddings } from "langchain/embeddings/base";
 import { sliceIntoChunks } from "./utils/util.js";
 
@@ -24,13 +24,12 @@ class Embedder {
       {
         quantized: false,
         config
-      },
-
+      }
     );
   }
 
   // Embeds a text and returns the embedding
-  async embed(text: string, metadata?: Record<string, unknown>): Promise<Vector> {
+  async embed(text: string, metadata?: RecordMetadata): Promise<PineconeRecord> {
     try {
       const result = await this.pipe(text, { pooling: 'mean', normalize: true });
       const id = (metadata?.id as string) || randomUUID();
@@ -51,7 +50,7 @@ class Embedder {
   async embedBatch(
     documents: DocumentOrString[],
     batchSize: number,
-    onDoneBatch: (embeddings: Vector[]) => void
+    onDoneBatch: (embeddings: PineconeRecord[]) => void
   ) {
     const batches = sliceIntoChunks<DocumentOrString>(documents, batchSize);
     for (const batch of batches) {
@@ -69,7 +68,7 @@ class Embedder {
 
 interface TransformersJSEmbeddingParams extends EmbeddingsParams {
   modelName: string;
-  onEmbeddingDone?: (embeddings: Vector[]) => void;
+  onEmbeddingDone?: (embeddings: PineconeRecord[]) => void;
 }
 
 class TransformersJSEmbedding extends Embeddings implements TransformersJSEmbeddingParams {
