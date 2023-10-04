@@ -3,7 +3,7 @@ import { Pipeline, pipeline, AutoConfig } from "@xenova/transformers";
 import type { PineconeRecord, RecordMetadata } from "@pinecone-database/pinecone";
 import type { Document } from 'langchain/document';
 import { EmbeddingsParams, Embeddings } from "langchain/embeddings/base";
-import { sliceIntoChunks } from "./utils/util.js";
+import { sliceIntoChunks } from "./utils/util";
 
 
 type DocumentOrString = Document | string;
