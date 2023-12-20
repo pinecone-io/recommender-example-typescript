@@ -1,10 +1,12 @@
 import { randomUUID } from "crypto";
 import { Pipeline, pipeline, AutoConfig } from "@xenova/transformers";
-import type { PineconeRecord, RecordMetadata } from "@pinecone-database/pinecone";
-import type { Document } from 'langchain/document';
+import type {
+  PineconeRecord,
+  RecordMetadata,
+} from "@pinecone-database/pinecone";
+import type { Document } from "langchain/document";
 import { EmbeddingsParams, Embeddings } from "langchain/embeddings/base";
 import { sliceIntoChunks } from "./utils/util.js";
-
 
 type DocumentOrString = Document | string;
 
@@ -18,20 +20,22 @@ class Embedder {
 
   async init(modelName: string) {
     const config = await AutoConfig.from_pretrained(modelName);
-    this.pipe = await pipeline(
-      "embeddings",
-      modelName,
-      {
-        quantized: false,
-        config
-      }
-    );
+    this.pipe = await pipeline("embeddings", modelName, {
+      quantized: false,
+      config,
+    });
   }
 
   // Embeds a text and returns the embedding
-  async embed(text: string, metadata?: RecordMetadata): Promise<PineconeRecord> {
+  async embed(
+    text: string,
+    metadata?: RecordMetadata
+  ): Promise<PineconeRecord> {
     try {
-      const result = await this.pipe(text, { pooling: 'mean', normalize: true });
+      const result = await this.pipe(text, {
+        pooling: "mean",
+        normalize: true,
+      });
       const id = (metadata?.id as string) || randomUUID();
       return {
         id,
@@ -58,7 +62,10 @@ class Embedder {
         batch.map((documentOrString) =>
           isString(documentOrString)
             ? this.embed(documentOrString)
-            : this.embed(documentOrString.pageContent, documentOrString.metadata)
+            : this.embed(
+                documentOrString.pageContent,
+                documentOrString.metadata
+              )
         )
       );
       await onDoneBatch(embeddings);
@@ -71,7 +78,10 @@ interface TransformersJSEmbeddingParams extends EmbeddingsParams {
   onEmbeddingDone?: (embeddings: PineconeRecord[]) => void;
 }
 
-class TransformersJSEmbedding extends Embeddings implements TransformersJSEmbeddingParams {
+class TransformersJSEmbedding
+  extends Embeddings
+  implements TransformersJSEmbeddingParams
+{
   modelName: string;
 
   pipe: Pipeline | null = null;
@@ -82,26 +92,21 @@ class TransformersJSEmbedding extends Embeddings implements TransformersJSEmbedd
   }
 
   async embedDocuments(texts: string[]): Promise<number[][]> {
-    this.pipe = this.pipe || await pipeline(
-      "embeddings",
-      this.modelName
-    );
+    this.pipe = this.pipe || (await pipeline("embeddings", this.modelName));
 
-    const embeddings = await Promise.all(texts.map(async (text) => this.embedQuery(text)));
+    const embeddings = await Promise.all(
+      texts.map(async (text) => this.embedQuery(text))
+    );
     return embeddings;
   }
 
   async embedQuery(text: string): Promise<number[]> {
-    this.pipe = this.pipe || await pipeline(
-      "embeddings",
-      this.modelName
-    );
+    this.pipe = this.pipe || (await pipeline("embeddings", this.modelName));
 
     const result = await this.pipe(text);
     return Array.from(result.data) as number[];
   }
 }
-
 
 const embedder = new Embedder();
 export { embedder, TransformersJSEmbedding };
