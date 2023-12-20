@@ -81,7 +81,7 @@ async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
 }
 
 try {
-  const fileParts = await splitFile("./data/all-the-news-2-1.csv", 500000);
+  const fileParts = await splitFile("./data/all-the-news-2-1.csv", 100000);
   const firstFile = fileParts[0];
 
   // For this example, we will use the first file part to create the index

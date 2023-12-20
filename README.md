@@ -96,19 +96,27 @@ Next we'll create a function that will generate the embeddings and upsert them i
 
 ```typescript
 async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
-  const chunkGenerator = processInChunks<ArticleRecord, 'section' | 'url' | 'title' | 'publication' | 'author' | 'article', 'article'>(
+  const chunkGenerator = processInChunks<
+    ArticleRecord,
+    "section" | "url" | "title" | "publication" | "author" | "article",
+    "article"
+  >(
     dataFrame,
     100,
-    ['section', 'url', 'title', 'publication', 'author', 'article'],
-    'article'
+    ["section", "url", "title", "publication", "author", "article"],
+    "article"
   );
   const index = pinecone.index(indexName);
 
   for await (const documents of chunkGenerator) {
-    await embedder.embedBatch(documents, chunkSize, async (embeddings: PineconeRecord[]) => {
-      await chunkedUpsert(index, embeddings, "default");
-      progressBar.increment(embeddings.length);
-    });
+    await embedder.embedBatch(
+      documents,
+      chunkSize,
+      async (embeddings: PineconeRecord[]) => {
+        await chunkedUpsert(index, embeddings, "default");
+        progressBar.increment(embeddings.length);
+      }
+    );
   }
 }
 ```
@@ -116,7 +124,7 @@ async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
 We'll use the `splitFile` utility function to split the CSV file we downloaded into chunks of 100k parts each. For the purposes of this example, we'll only use the first 100k records.
 
 ```typescript
-const fileParts = await splitFile("./data/all-the-news-2-1.csv", 1000000);
+const fileParts = await splitFile("./data/all-the-news-2-1.csv", 100000);
 const firstFile = fileParts[0];
 ```
 
@@ -132,8 +140,13 @@ Now we'll create the Pinecone index and kick off the embedding and upserting pro
 ```typescript
 // Create the index if it doesn't already exist
 const indexList = await pinecone.listIndexes();
-if (indexList.indexOf({ name: indexName }) === -1) {
-  await pinecone.createIndex({ name: indexName, dimension: 384, waitUntilReady: true })
+if (!indexList.indexes?.some((index) => index.name === indexName)) {
+  await pinecone.createIndex({
+    name: indexName,
+    dimension: 384,
+    spec: { serverless: { region: "us-west-2", cloud: "aws" } },
+    waitUntilReady: true,
+  });
 }
 
 progressBar.start(clean.shape[0], 0);
@@ -154,10 +167,14 @@ const pinecone = new Pinecone();
 try {
   const description = await pinecone.describeIndex(indexName);
   if (!description.status?.ready) {
-    throw `Index not ready, description was ${JSON.stringify(description)}`
+    throw new Error(
+      `Index not ready, description was ${JSON.stringify(description)}`
+    );
   }
 } catch (e) {
-  console.log('An error occurred. Run "npm run index" to load data into the index before querying.')
+  console.log(
+    'An error occurred. Run "npm run index" to load data into the index before querying.'
+  );
   throw e;
 }
 
@@ -174,7 +191,7 @@ const queryResult = await index.query({
     includeMetadata: true,
     includeValues: true,
     filter: {
-      section: { "$eq": section }
+      section: { $eq: section }
     },
     topK: 10
 });
@@ -184,15 +201,18 @@ We'll calculate the **mean** vector given the results of the query. The mean vec
 
 ```typescript
 // We extract the vectors of the results
-const userVectors = queryResult?.matches?.map((result: ScoredPineconeRecord<ArticleRecord>) => result.values);
+const userVectors = queryResult?.matches?.map(
+  (result: ScoredPineconeRecord<ArticleRecord>) => result.values
+);
 
 // A couple of functions to calculate mean vector
-const mean = (arr: number[]): number => arr.reduce((a, b) => a + b, 0) / arr.length;
+const mean = (arr: number[]): number =>
+  arr.reduce((a, b) => a + b, 0) / arr.length;
 const meanVector = (vectors: number[][]): number[] => {
   const { length } = vectors[0];
 
   return Array.from({ length }).map((_, i) =>
-    mean(vectors.map(vec => vec[i]))
+    mean(vectors.map((vec) => vec[i]))
   );
 };
 
@@ -204,14 +224,11 @@ const meanVec = meanVector(userVectors!);
 To resolve the recommendations, we'll query the index with the mean vector and filter out the articles that the user has already read.
 
 ```typescript
-const recommendations = await pineconeIndex.query({
-  queryRequest: {
-    vector: meanVec,
-    includeMetadata: true,
-    includeValues: true,
-    namespace: "default",
-    topK: 10,
-  },
+const recommendations = await index.query({
+  vector: meanVec,
+  includeMetadata: true,
+  includeValues: true,
+  topK: 10,
 });
 ```
 
@@ -235,10 +252,11 @@ const userRecommendations = new Table({
 });
 
 queryResult?.matches?.slice(0, 10).forEach((result: any) => {
-  const { title, author, section } = result.metadata;
+  const { title, article, publication, section } = result.metadata;
   userPreferences.addRow({
     title,
-    author,
+    article: `${article.slice(0, 70)}...`,
+    publication,
     section,
   });
 });
@@ -247,10 +265,11 @@ console.log("========== User Preferences ==========");
 userPreferences.printTable();
 
 recommendations?.matches?.slice(0, 10).forEach((result: any) => {
-  const { title, author, section } = result.metadata;
+  const { title, article, publication, section } = result.metadata;
   userRecommendations.addRow({
     title,
-    author,
+    article: `${article.slice(0, 70)}...`,
+    publication,
     section,
   });
 });
