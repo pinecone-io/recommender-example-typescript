@@ -1,5 +1,9 @@
 /* eslint-disable import/no-extraneous-dependencies */
-import { getEnv, getQueryingCommandLineArguments, validateEnvironmentVariables } from "utils/util.ts";
+import {
+  getEnv,
+  getQueryingCommandLineArguments,
+  validateEnvironmentVariables,
+} from "utils/util.ts";
 import { embedder } from "embeddings.ts";
 import { Table } from "console-table-printer";
 import { Pinecone } from "@pinecone-database/pinecone";

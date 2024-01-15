@@ -10,7 +10,7 @@ npm install
 
 ## Required configuration
 
-In order to run this example, you have to supply the Pinecone credentials needed to interact with the Pinecone API. You can find these credentials in the [Pinecone web console](https://app.pinecone.io) under **API Keys**. This project uses `dotenv` to easily load values from the `.env` file into the environment when executing. 
+In order to run this example, you have to supply the Pinecone credentials needed to interact with the Pinecone API. You can find these credentials in the [Pinecone web console](https://app.pinecone.io) under **API Keys**. This project uses `dotenv` to easily load values from the `.env` file into the environment when executing.
 
 Copy the template file:
 
@@ -22,10 +22,14 @@ And fill in your API key and index name:
 
 ```sh
 PINECONE_API_KEY=<your-api-key>
-PINECONE_INDEX=article-recommendations
+PINECONE_INDEX="article-recommendations"
+PINECONE_CLOUD="aws"
+PINECONE_REGION="us-west-2"
 ```
 
 `PINECONE_INDEX` is the name of the index where this demo will store and query embeddings. You can change `PINECONE_INDEX` to any name you like, but make sure the name not going to collide with any indexes you are already using.
+
+`PINECONE_CLOUD` and `PINECONE_REGION` define where the index should be deployed. Currently, this is the only available cloud and region combination (`aws` and `us-west-2`), so it's recommended to leave them defaulted.
 
 ## Data preparation
 
@@ -144,7 +148,7 @@ if (!indexList.indexes?.some((index) => index.name === indexName)) {
   await pinecone.createIndex({
     name: indexName,
     dimension: 384,
-    spec: { serverless: { region: "us-west-2", cloud: "aws" } },
+    spec: { serverless: { region: indexRegion, cloud: indexCloud } },
     waitUntilReady: true,
   });
 }
@@ -178,22 +182,22 @@ try {
   throw e;
 }
 
-const index = pinecone.index<ArticleRecord>(indexName).namespace('default');
+const index = pinecone.index<ArticleRecord>(indexName).namespace("default");
 
 await embedder.init("Xenova/all-MiniLM-L6-v2");
 
 const { query, section } = getQueryingCommandLineArguments();
 
 // We create a simulated user with an interest given a query and a specific section
-const queryEmbedding = await embedder.embed(query)
+const queryEmbedding = await embedder.embed(query);
 const queryResult = await index.query({
-    vector: queryEmbedding.values,
-    includeMetadata: true,
-    includeValues: true,
-    filter: {
-      section: { $eq: section }
-    },
-    topK: 10
+  vector: queryEmbedding.values,
+  includeMetadata: true,
+  includeValues: true,
+  filter: {
+    section: { $eq: section },
+  },
+  topK: 10,
 });
 ```
 

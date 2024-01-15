@@ -1,7 +1,11 @@
 /* eslint-disable import/no-extraneous-dependencies */
 /* eslint-disable dot-notation */
 import * as dotenv from "dotenv";
-import { Pinecone, type PineconeRecord } from "@pinecone-database/pinecone";
+import {
+  Pinecone,
+  type PineconeRecord,
+  type ServerlessSpecCloudEnum,
+} from "@pinecone-database/pinecone";
 import { getEnv, validateEnvironmentVariables } from "utils/util.ts";
 import cliProgress from "cli-progress";
 import { Document } from "langchain/document";
@@ -22,6 +26,8 @@ const progressBar = new cliProgress.SingleBar(
 
 // Index setup
 const indexName = getEnv("PINECONE_INDEX");
+const indexCloud = getEnv("PINECONE_CLOUD") as ServerlessSpecCloudEnum;
+const indexRegion = getEnv("PINECONE_REGION");
 const pinecone = new Pinecone();
 
 async function getChunk(
@@ -95,7 +101,7 @@ try {
     await pinecone.createIndex({
       name: indexName,
       dimension: 384,
-      spec: { serverless: { region: "us-west-2", cloud: "aws" } },
+      spec: { serverless: { region: indexRegion, cloud: indexCloud } },
       waitUntilReady: true,
     });
   }
