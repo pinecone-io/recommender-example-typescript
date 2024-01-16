@@ -1,12 +1,15 @@
 /* eslint-disable no-plusplus */
-import fs from 'fs';
-import readline from 'readline';
+import fs from "fs";
+import readline from "readline";
 
-async function splitFile(filePath: string, numLinesPerPart: number): Promise<string[]> {
+async function splitFile(
+  filePath: string,
+  numLinesPerPart: number
+): Promise<string[]> {
   const fileStream = fs.createReadStream(filePath);
   const rl = readline.createInterface({
     input: fileStream,
-    crlfDelay: Infinity
+    crlfDelay: Infinity,
   });
 
   let partIndex = 1;
@@ -32,6 +35,5 @@ async function splitFile(filePath: string, numLinesPerPart: number): Promise<str
 
   return createdFiles;
 }
-
 
 export default splitFile;

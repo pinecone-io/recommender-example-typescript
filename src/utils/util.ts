@@ -1,9 +1,10 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
-const sliceIntoChunks = <T>(arr: T[], chunkSize: number) => Array.from({ length: Math.ceil(arr.length / chunkSize) }, (_, i) =>
-  arr.slice(i * chunkSize, (i + 1) * chunkSize)
-);
+const sliceIntoChunks = <T>(arr: T[], chunkSize: number) =>
+  Array.from({ length: Math.ceil(arr.length / chunkSize) }, (_, i) =>
+    arr.slice(i * chunkSize, (i + 1) * chunkSize)
+  );
 
 const getQueryingCommandLineArguments = () => {
   const argv = yargs(hideBin(process.argv))
@@ -41,12 +42,13 @@ export const getEnv = (key: string): string => {
 
 const validateEnvironmentVariables = () => {
   getEnv("PINECONE_API_KEY");
-  getEnv("PINECONE_ENVIRONMENT");
   getEnv("PINECONE_INDEX");
+  getEnv("PINECONE_CLOUD");
+  getEnv("PINECONE_REGION");
 };
 
 export {
   getQueryingCommandLineArguments,
   sliceIntoChunks,
-  validateEnvironmentVariables
+  validateEnvironmentVariables,
 };

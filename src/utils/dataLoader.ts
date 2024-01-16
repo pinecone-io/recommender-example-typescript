@@ -15,7 +15,10 @@ const jsonToCSV = async (
   const { data } = await response.json();
 
   const topLevelData = data;
-  const transforms = [unwind({ paths: [...unwindFieldsPaths] }), flatten({ objects: true, arrays: true })];
+  const transforms = [
+    unwind({ paths: [...unwindFieldsPaths] }),
+    flatten({ objects: true, arrays: true }),
+  ];
 
   const json2csvParser = new Parser({ fields, transforms });
   const csv = json2csvParser.parse(topLevelData);
@@ -52,7 +55,10 @@ const dataFrameFromURL = async (
   return df;
 };
 
-const dropDuplicates = (df: dfd.DataFrame, columnName: string): dfd.DataFrame => {
+const dropDuplicates = (
+  df: dfd.DataFrame,
+  columnName: string
+): dfd.DataFrame => {
   // Get the column as a series
   const series = df[columnName];
 
