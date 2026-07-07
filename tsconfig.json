@@ -7,7 +7,7 @@
     "forceConsistentCasingInFileNames": true,
     "outDir": "dist",
     "lib": ["ES2021", "ES2022.Object", "DOM"],
-    "target": "es2017",
+    "target": "es2022",
     "module": "nodenext",
     "sourceMap": true,
     "allowSyntheticDefaultImports": true,
