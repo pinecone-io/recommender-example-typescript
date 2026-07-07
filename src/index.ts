@@ -8,12 +8,12 @@ import {
 } from "@pinecone-database/pinecone";
 import { getEnv, validateEnvironmentVariables } from "utils/util.ts";
 import cliProgress from "cli-progress";
-import { Document } from "langchain/document";
 import * as dfd from "danfojs-node";
 import { embedder } from "embeddings.ts";
 import loadCSVFile from "utils/csvLoader.ts";
 import splitFile from "utils/fileSplitter.ts";
 import type { ArticleRecord } from "types.ts";
+import { Document } from "./utils/document.ts";
 import { chunkedUpsert } from "./utils/chunkedUpsert.ts";
 
 dotenv.config();
