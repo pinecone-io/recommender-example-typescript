@@ -1,5 +1,9 @@
 import { randomUUID } from "crypto";
-import { Pipeline, pipeline, AutoConfig } from "@xenova/transformers";
+import {
+  pipeline,
+  AutoConfig,
+  type FeatureExtractionPipeline,
+} from "@huggingface/transformers";
 import type {
   PineconeRecord,
   RecordMetadata,
@@ -15,12 +19,12 @@ function isString(test: any): test is string {
 }
 
 class Embedder {
-  private pipe: Pipeline;
+  private pipe: FeatureExtractionPipeline;
 
   async init(modelName: string) {
     const config = await AutoConfig.from_pretrained(modelName);
-    this.pipe = await pipeline("embeddings", modelName, {
-      quantized: false,
+    this.pipe = await pipeline("feature-extraction", modelName, {
+      dtype: "fp32",
       config,
     });
   }
