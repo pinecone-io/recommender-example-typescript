@@ -12,6 +12,8 @@
     "build": "tsup",
     "index": "tsx -r dotenv/config src/index.ts",
     "recommend": "tsx -r dotenv/config src/recommend.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint": "eslint src",
     "lint:fix": "npm run lint --fix",
     "format": "prettier --write \"**/*.ts\"",
@@ -58,6 +60,7 @@
     "eslint-plugin-prettier": "^4.2.1",
     "prettier": "^2.8.3",
     "tsx": "^3.12.3",
-    "typescript": "^5.0.4"
+    "typescript": "^5.0.4",
+    "vitest": "^2.1.9"
   }
 }
