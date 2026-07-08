@@ -4,8 +4,7 @@ import type {
   PineconeRecord,
   RecordMetadata,
 } from "@pinecone-database/pinecone";
-import type { Document } from "langchain/document";
-import { EmbeddingsParams, Embeddings } from "langchain/embeddings/base";
+import type { Document } from "./utils/document.ts";
 import { sliceIntoChunks } from "./utils/util.js";
 
 type DocumentOrString = Document | string;
@@ -73,40 +72,5 @@ class Embedder {
   }
 }
 
-interface TransformersJSEmbeddingParams extends EmbeddingsParams {
-  modelName: string;
-  onEmbeddingDone?: (embeddings: PineconeRecord[]) => void;
-}
-
-class TransformersJSEmbedding
-  extends Embeddings
-  implements TransformersJSEmbeddingParams
-{
-  modelName: string;
-
-  pipe: Pipeline | null = null;
-
-  constructor(params: TransformersJSEmbeddingParams) {
-    super(params);
-    this.modelName = params.modelName;
-  }
-
-  async embedDocuments(texts: string[]): Promise<number[][]> {
-    this.pipe = this.pipe || (await pipeline("embeddings", this.modelName));
-
-    const embeddings = await Promise.all(
-      texts.map(async (text) => this.embedQuery(text))
-    );
-    return embeddings;
-  }
-
-  async embedQuery(text: string): Promise<number[]> {
-    this.pipe = this.pipe || (await pipeline("embeddings", this.modelName));
-
-    const result = await this.pipe(text);
-    return Array.from(result.data) as number[];
-  }
-}
-
 const embedder = new Embedder();
-export { embedder, TransformersJSEmbedding };
+export { embedder };
