@@ -19,9 +19,8 @@ describe("chunkedUpsert", () => {
     const { index, namespace, upsert } = makeMockIndex();
     const vectors = Array.from({ length: 25 }, (_, i) => record(`${i}`));
 
-    const result = await chunkedUpsert(index, vectors, "ns", 10);
+    await chunkedUpsert(index, vectors, "ns", 10);
 
-    expect(result).toBe(true);
     // 25 vectors, chunk size 10 => 3 upsert calls (10, 10, 5)
     expect(upsert).toHaveBeenCalledTimes(3);
     expect(upsert.mock.calls[0][0].records).toHaveLength(10);
@@ -44,20 +43,19 @@ describe("chunkedUpsert", () => {
   it("does not upsert anything for an empty vector list", async () => {
     const { index, upsert } = makeMockIndex();
 
-    const result = await chunkedUpsert(index, [], "ns");
+    await chunkedUpsert(index, [], "ns");
 
-    expect(result).toBe(true);
     expect(upsert).not.toHaveBeenCalled();
   });
 
-  it("swallows per-chunk errors and still resolves to true", async () => {
+  it("swallows per-chunk errors and still upserts the other chunks", async () => {
     const { index, upsert } = makeMockIndex();
     upsert.mockRejectedValueOnce(new Error("boom"));
     const vectors = Array.from({ length: 15 }, (_, i) => record(`${i}`));
 
-    const result = await chunkedUpsert(index, vectors, "ns", 10);
-
-    expect(result).toBe(true);
+    await expect(
+      chunkedUpsert(index, vectors, "ns", 10)
+    ).resolves.toBeUndefined();
     expect(upsert).toHaveBeenCalledTimes(2);
   });
 });

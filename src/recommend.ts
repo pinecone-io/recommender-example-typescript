@@ -1,118 +1,131 @@
-/* eslint-disable import/no-extraneous-dependencies */
-import {
-  getEnv,
-  getQueryingCommandLineArguments,
-  validateEnvironmentVariables,
-} from "utils/util.ts";
-import { embedder } from "embeddings.ts";
-import { Table } from "console-table-printer";
+// Queries the article index for a simulated user.
+//
+// Given a `--query` and `--section`, we fetch the articles the user has
+// "read" (the query results), average their vectors into a single taste
+// vector, then query again with that mean to produce recommendations.
+//
+// Run with: npm run recommend -- --query="tennis" --section="Sports"
 import { Pinecone } from "@pinecone-database/pinecone";
 import type { ScoredPineconeRecord } from "@pinecone-database/pinecone";
-import type { ArticleRecord } from "types.ts";
+import { Table } from "console-table-printer";
+import { getEnv, validateEnvironmentVariables } from "./utils/env.ts";
+import { getQueryingCommandLineArguments } from "./utils/cli.ts";
+import { embedder } from "./embeddings.ts";
+import { DEFAULT_NAMESPACE } from "./constants.ts";
+import type { ArticleRecord } from "./types.ts";
 
-validateEnvironmentVariables();
-
-const indexName = getEnv("PINECONE_INDEX");
-const pinecone = new Pinecone();
-
-// Ensure the index exists
-try {
-  const description = await pinecone.describeIndex(indexName);
-  if (!description.status?.ready) {
-    throw new Error(
-      `Index not ready, description was ${JSON.stringify(description)}`
-    );
-  }
-} catch (e) {
-  console.log(
-    'An error occurred. Run "npm run index" to load data into the index before querying.'
-  );
-  throw e;
-}
-
-const index = pinecone.index<ArticleRecord>(indexName).namespace("default");
-
-await embedder.init("Xenova/all-MiniLM-L6-v2");
-
-const { query, section } = getQueryingCommandLineArguments();
-
-// We create a simulated user with an interest given a query and a specific section
-const queryEmbedding = await embedder.embed(query);
-const queryResult = await index.query({
-  vector: queryEmbedding.values ?? [],
-  includeMetadata: true,
-  includeValues: true,
-  filter: {
-    section: { $eq: section },
-  },
-  topK: 10,
-});
-
-// We extract the vectors of the results
-const userVectors = queryResult?.matches
-  ?.map((result: ScoredPineconeRecord<ArticleRecord>) => result.values)
-  .filter((values): values is number[] => values !== undefined);
-
-// A couple of functions to calculate mean vector
-const mean = (arr: number[]): number =>
-  arr.reduce((a, b) => a + b, 0) / arr.length;
+// Averages a set of equal-length vectors component by component. The resulting
+// mean vector represents the user's interests across the articles they've read.
 const meanVector = (vectors: number[][]): number[] => {
+  const mean = (values: number[]): number =>
+    values.reduce((a, b) => a + b, 0) / values.length;
   const { length } = vectors[0];
 
-  return Array.from({ length }).map((_, i) =>
-    mean(vectors.map((vec) => vec[i]))
-  );
+  return Array.from({ length }).map((_, i) => mean(vectors.map((v) => v[i])));
 };
 
-// We calculate the mean vector of the results
-// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-const meanVec = meanVector(userVectors!);
-
-// We query the index with the mean vector to get recommendations for the user
-const recommendations = await index.query({
-  vector: meanVec,
-  includeMetadata: true,
-  includeValues: true,
-  topK: 10,
-});
-
-const userPreferences = new Table({
-  columns: [
-    { name: "title", alignment: "left" },
-    { name: "author", alignment: "left" },
-    { name: "section", alignment: "left" },
-  ],
-});
-
-const userRecommendations = new Table({
-  columns: [
-    { name: "title", alignment: "left" },
-    { name: "author", alignment: "left" },
-    { name: "section", alignment: "left" },
-  ],
-});
-
-queryResult?.matches?.slice(0, 10).forEach((result: any) => {
-  const { title, article, publication, section } = result.metadata;
-  userPreferences.addRow({
-    title,
-    article: `${article.slice(0, 70)}...`,
-    publication,
-    section,
+// Prints a table of article matches under the given heading.
+const printArticleTable = (
+  heading: string,
+  matches: ScoredPineconeRecord<ArticleRecord>[]
+) => {
+  const table = new Table({
+    columns: [
+      { name: "title", alignment: "left" },
+      { name: "article", alignment: "left" },
+      { name: "section", alignment: "left" },
+      { name: "publication", alignment: "left" },
+    ],
   });
-});
 
-console.log("========== User Preferences ==========");
-userPreferences.printTable();
+  for (const match of matches) {
+    const { metadata } = match;
+    if (metadata) {
+      const { title, article, section, publication } = metadata;
+      table.addRow({
+        title,
+        article: `${article.slice(0, 70)}...`,
+        section,
+        publication,
+      });
+    }
+  }
 
-recommendations?.matches?.slice(0, 10).forEach((result: any) => {
-  const { title, article, publication, section } = result.metadata;
-  userRecommendations.addRow({
-    title,
-    article: `${article.slice(0, 70)}...`,
-    publication,
-    section,
+  console.log(heading);
+  table.printTable();
+};
+
+async function main() {
+  validateEnvironmentVariables();
+
+  const indexName = getEnv("PINECONE_INDEX");
+  const pinecone = new Pinecone();
+
+  // Ensure the index exists and is ready before we query it.
+  try {
+    const description = await pinecone.describeIndex(indexName);
+    if (!description.status?.ready) {
+      throw new Error(
+        `Index not ready, description was ${JSON.stringify(description)}`
+      );
+    }
+  } catch (e) {
+    console.log(
+      'An error occurred. Run "npm run index" to load data into the index before querying.'
+    );
+    throw e;
+  }
+
+  const index = pinecone
+    .index<ArticleRecord>(indexName)
+    .namespace(DEFAULT_NAMESPACE);
+
+  await embedder.init("Xenova/all-MiniLM-L6-v2");
+
+  const { query, section } = getQueryingCommandLineArguments();
+
+  // Simulate the articles the user has read: the closest matches to their query
+  // within the section they're interested in.
+  const queryEmbedding = await embedder.embed(query);
+  const queryResult = await index.query({
+    vector: queryEmbedding.values ?? [],
+    includeMetadata: true,
+    includeValues: true,
+    filter: { section: { $eq: section } },
+    topK: 10,
   });
+
+  const readArticles = queryResult.matches ?? [];
+  if (readArticles.length === 0) {
+    console.log(
+      `No articles found for section "${section}" matching "${query}". ` +
+        "Try a different --query or --section."
+    );
+    return;
+  }
+
+  // Average the read articles' vectors into a single "taste" vector.
+  const userVectors = readArticles
+    .map((match) => match.values)
+    .filter((values): values is number[] => values !== undefined);
+  const meanVec = meanVector(userVectors);
+
+  // Query again with the taste vector to produce recommendations.
+  const recommendations = await index.query({
+    vector: meanVec,
+    includeMetadata: true,
+    includeValues: true,
+    topK: 10,
+  });
+
+  printArticleTable("========== User Preferences ==========", readArticles);
+  printArticleTable(
+    "=========== Recommendations ==========",
+    recommendations.matches ?? []
+  );
+}
+
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
 });
-console.log("=========== Recommendations ==========");
-userRecommendations.printTable();

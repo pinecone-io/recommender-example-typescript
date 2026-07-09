@@ -1,26 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getEnv, sliceIntoChunks } from "../src/utils/util.ts";
-
-describe("sliceIntoChunks", () => {
-  it("splits an array into evenly sized chunks", () => {
-    expect(sliceIntoChunks([1, 2, 3, 4], 2)).toEqual([
-      [1, 2],
-      [3, 4],
-    ]);
-  });
-
-  it("puts the remainder in a final, smaller chunk", () => {
-    expect(sliceIntoChunks([1, 2, 3, 4, 5], 2)).toEqual([[1, 2], [3, 4], [5]]);
-  });
-
-  it("returns a single chunk when the chunk size exceeds the length", () => {
-    expect(sliceIntoChunks([1, 2, 3], 10)).toEqual([[1, 2, 3]]);
-  });
-
-  it("returns an empty array for empty input", () => {
-    expect(sliceIntoChunks([], 3)).toEqual([]);
-  });
-});
+import { getEnv } from "../src/utils/env.ts";
 
 describe("getEnv", () => {
   const KEY = "RECOMMENDER_TEST_ENV_VAR";
