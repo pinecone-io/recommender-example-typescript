@@ -9,7 +9,7 @@ import type {
   RecordMetadata,
 } from "@pinecone-database/pinecone";
 import type { Document } from "./utils/document.ts";
-import { sliceIntoChunks } from "./utils/util.js";
+import { sliceIntoChunks } from "./utils/chunk.ts";
 
 type DocumentOrString = Document | string;
 
