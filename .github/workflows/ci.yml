@@ -37,8 +37,8 @@ jobs:
       - name: Check formatting
         run: npm run format:check
 
-      - name: Build
-        run: npm run build
+      - name: Typecheck
+        run: npm run typecheck
 
       - name: Test
         run: npm test
