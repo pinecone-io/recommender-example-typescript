@@ -39,7 +39,7 @@ const { query, section } = getQueryingCommandLineArguments();
 // We create a simulated user with an interest given a query and a specific section
 const queryEmbedding = await embedder.embed(query);
 const queryResult = await index.query({
-  vector: queryEmbedding.values,
+  vector: queryEmbedding.values ?? [],
   includeMetadata: true,
   includeValues: true,
   filter: {
@@ -49,9 +49,9 @@ const queryResult = await index.query({
 });
 
 // We extract the vectors of the results
-const userVectors = queryResult?.matches?.map(
-  (result: ScoredPineconeRecord<ArticleRecord>) => result.values
-);
+const userVectors = queryResult?.matches
+  ?.map((result: ScoredPineconeRecord<ArticleRecord>) => result.values)
+  .filter((values): values is number[] => values !== undefined);
 
 // A couple of functions to calculate mean vector
 const mean = (arr: number[]): number =>

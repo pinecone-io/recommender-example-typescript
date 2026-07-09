@@ -24,9 +24,9 @@ describe("chunkedUpsert", () => {
     expect(result).toBe(true);
     // 25 vectors, chunk size 10 => 3 upsert calls (10, 10, 5)
     expect(upsert).toHaveBeenCalledTimes(3);
-    expect(upsert.mock.calls[0][0]).toHaveLength(10);
-    expect(upsert.mock.calls[1][0]).toHaveLength(10);
-    expect(upsert.mock.calls[2][0]).toHaveLength(5);
+    expect(upsert.mock.calls[0][0].records).toHaveLength(10);
+    expect(upsert.mock.calls[1][0].records).toHaveLength(10);
+    expect(upsert.mock.calls[2][0].records).toHaveLength(5);
     expect(namespace).toHaveBeenCalledWith("ns");
   });
 
@@ -37,8 +37,8 @@ describe("chunkedUpsert", () => {
     await chunkedUpsert(index, vectors, "ns");
 
     expect(upsert).toHaveBeenCalledTimes(2);
-    expect(upsert.mock.calls[0][0]).toHaveLength(10);
-    expect(upsert.mock.calls[1][0]).toHaveLength(1);
+    expect(upsert.mock.calls[0][0].records).toHaveLength(10);
+    expect(upsert.mock.calls[1][0].records).toHaveLength(1);
   });
 
   it("does not upsert anything for an empty vector list", async () => {
