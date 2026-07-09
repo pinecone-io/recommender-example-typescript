@@ -8,6 +8,28 @@ The goal is to create a recommendation engine that retrieves the best article re
 npm install
 ```
 
+## Project structure
+
+The example is two scripts backed by a handful of small, single-purpose utilities:
+
+```
+src/
+├── index.ts              # `npm run index`: load the dataset into Pinecone
+├── recommend.ts          # `npm run recommend`: query for recommendations
+├── embeddings.ts         # wraps the local Transformers.js embedding model
+├── constants.ts          # the shared Pinecone namespace
+├── types.ts              # the ArticleRecord shape
+└── utils/
+    ├── csv.ts            # minimal RFC 4180 CSV parser + dropEmptyRows
+    ├── csvLoader.ts      # reads a CSV file from disk into row objects
+    ├── fileSplitter.ts   # splits the large dataset into smaller parts
+    ├── document.ts       # the Document value type (pageContent + metadata)
+    ├── chunk.ts          # sliceIntoChunks batching helper
+    ├── chunkedUpsert.ts  # upserts vectors into Pinecone in batches
+    ├── env.ts            # reads/validates required environment variables
+    └── cli.ts            # parses --query / --section arguments
+```
+
 ## Required configuration
 
 In order to run this example, you have to supply the Pinecone credentials needed to interact with the Pinecone API. You can find these credentials in the [Pinecone web console](https://app.pinecone.io) under **API Keys**. This project uses `dotenv` to easily load values from the `.env` file into the environment when executing.
@@ -29,7 +51,7 @@ PINECONE_REGION="us-west-2"
 
 `PINECONE_INDEX` is the name of the index where this demo will store and query embeddings. You can change `PINECONE_INDEX` to any name you like, but make sure the name not going to collide with any indexes you are already using.
 
-`PINECONE_CLOUD` and `PINECONE_REGION` define where the index should be deployed. Currently, this is the only available cloud and region combination (`aws` and `us-west-2`), so it's recommended to leave them defaulted.
+`PINECONE_CLOUD` and `PINECONE_REGION` define where the serverless index is deployed. Use a cloud/region combination that your Pinecone project supports (for example `aws` / `us-east-1`); the values above are just a starting point.
 
 ## Data preparation
 
@@ -54,15 +76,14 @@ Since the dataset could be pretty big, this project uses a generator function th
 
 ```typescript
 async function* processInChunks<T, M extends keyof T, P extends keyof T>(
-  dataFrame: dfd.DataFrame,
+  records: T[],
   chunkSize: number,
   metadataFields: M[],
   pageContentField: P
 ): AsyncGenerator<Document[]> {
-  for (let i = 0; i < dataFrame.shape[0]; i += chunkSize) {
-    const chunk = await getChunk(dataFrame, i, chunkSize);
-    const records = dfd.toJSON(chunk) as T[];
-    yield records.map((record: T) => {
+  for (let i = 0; i < records.length; i += chunkSize) {
+    const chunk = records.slice(i, i + chunkSize);
+    yield chunk.map((record: T) => {
       const metadata: Partial<Record<M, T[M]>> = {};
       for (const field of metadataFields) {
         metadata[field] = record[field];
@@ -80,32 +101,31 @@ For each chunk, the function generates an array of `Document` objects. The funct
 
 Here are the parameters the function accepts:
 
-- `dataFrame`: This is the DataFrame that the function will process.
+- `records`: This is the array of records that the function will process.
 - `chunkSize`: This is the number of records that will be processed in each chunk.
 - `metadataFields`: This is an array of field names (which are keys of `T`) to be included in the metadata of each `Document`.
 - `pageContentField`: This is the field name (which is a key of `T`) to be used for the page content of each `Document`.
 
 Here's what the function does:
 
-1. It loops over the DataFrame in chunks of size `chunkSize`.
-2. For each chunk, it converts the chunk to JSON to get an array of records (of type `T`).
-3. Then, for each record in the chunk, it:
+1. It loops over the records in chunks of size `chunkSize`.
+2. For each record in the chunk, it:
    - Creates a `metadata` object that includes the specified metadata fields from the record.
    - Creates a new `Document` with the `pageContent` from the specified field in the record, and the `metadata` object.
-4. It then yields an array of the created `Document` objects for the chunk.
+3. It then yields an array of the created `Document` objects for the chunk.
 
 The `yield` keyword is used here to produce a value from the generator function. This allows the function to produce a sequence of values over time, rather than computing them all at once and returning them in a single array.
 
 Next we'll create a function that will generate the embeddings and upsert them into Pinecone. We'll use the `processInChunks` generator function to process the data in chunks. We'll also use the `chunkedUpsert` method to insert the embeddings into Pinecone in batches.
 
 ```typescript
-async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
+async function embedAndUpsert(records: ArticleRecord[], chunkSize: number) {
   const chunkGenerator = processInChunks<
     ArticleRecord,
     "section" | "url" | "title" | "publication" | "author" | "article",
     "article"
   >(
-    dataFrame,
+    records,
     100,
     ["section", "url", "title", "publication", "author", "article"],
     "article"
@@ -117,7 +137,7 @@ async function embedAndUpsert(dataFrame: dfd.DataFrame, chunkSize: number) {
       documents,
       chunkSize,
       async (embeddings: PineconeRecord[]) => {
-        await chunkedUpsert(index, embeddings, "default");
+        await chunkedUpsert(index, embeddings, DEFAULT_NAMESPACE);
         progressBar.increment(embeddings.length);
       }
     );
@@ -132,12 +152,17 @@ const fileParts = await splitFile("./data/all-the-news-2-1.csv", 100000);
 const firstFile = fileParts[0];
 ```
 
-Next, we'll load the data into a DataFrame using `loadCSVFile` and to simplify things, we'll also drop all rows which include a null value.
+Next, we'll load the CSV into an array of row objects using `loadCSVFile`, and to simplify things, we'll also drop every row that is missing a value using `dropEmptyRows`.
 
 ```typescript
 const data = await loadCSVFile(firstFile);
-const clean = data.dropNa() as dfd.DataFrame;
+const clean = dropEmptyRows(data);
 ```
+
+> **Note:** `loadCSVFile`, `dropEmptyRows`, and the `Document` type are small
+> helpers in `src/utils/`. Earlier versions of this example used `danfojs` and
+> `langchain` for these; they've been inlined to keep the dependency tree small
+> and the data flow easy to follow.
 
 Now we'll create the Pinecone index and kick off the embedding and upserting process.
 
@@ -148,14 +173,15 @@ if (!indexList.indexes?.some((index) => index.name === indexName)) {
   await pinecone.createIndex({
     name: indexName,
     dimension: 384,
+    metric: "cosine",
     spec: { serverless: { region: indexRegion, cloud: indexCloud } },
     waitUntilReady: true,
   });
 }
 
-progressBar.start(clean.shape[0], 0);
+progressBar.start(clean.length, 0);
 await embedder.init("Xenova/all-MiniLM-L6-v2");
-await embedAndUpsert(clean, 1);
+await embedAndUpsert(clean as unknown as ArticleRecord[], 1);
 progressBar.stop();
 ```
 
@@ -167,7 +193,7 @@ We will query the index for the an imagined user. We'll simulate a set of the ar
 const indexName = getEnv("PINECONE_INDEX");
 const pinecone = new Pinecone();
 
-// Ensure the index exists
+// Ensure the index exists and is ready before we query it.
 try {
   const description = await pinecone.describeIndex(indexName);
   if (!description.status?.ready) {
@@ -182,16 +208,19 @@ try {
   throw e;
 }
 
-const index = pinecone.index<ArticleRecord>(indexName).namespace("default");
+const index = pinecone
+  .index<ArticleRecord>(indexName)
+  .namespace(DEFAULT_NAMESPACE);
 
 await embedder.init("Xenova/all-MiniLM-L6-v2");
 
 const { query, section } = getQueryingCommandLineArguments();
 
-// We create a simulated user with an interest given a query and a specific section
+// Simulate the articles the user has read: the closest matches to their query
+// within the section they're interested in.
 const queryEmbedding = await embedder.embed(query);
 const queryResult = await index.query({
-  vector: queryEmbedding.values,
+  vector: queryEmbedding.values ?? [],
   includeMetadata: true,
   includeValues: true,
   filter: {
@@ -203,26 +232,35 @@ const queryResult = await index.query({
 
 We'll calculate the **mean** vector given the results of the query. The mean vector represents the user's interests based on the articles they've read.
 
-```typescript
-// We extract the vectors of the results
-const userVectors = queryResult?.matches?.map(
-  (result: ScoredPineconeRecord<ArticleRecord>) => result.values
-);
+If the query returned no matches (for example, a section that doesn't exist), we bail out with a friendly message instead of averaging an empty list:
 
-// A couple of functions to calculate mean vector
-const mean = (arr: number[]): number =>
-  arr.reduce((a, b) => a + b, 0) / arr.length;
+```typescript
+const readArticles = queryResult.matches ?? [];
+if (readArticles.length === 0) {
+  console.log(
+    `No articles found for section "${section}" matching "${query}". ` +
+      "Try a different --query or --section."
+  );
+  return;
+}
+
+// Average the read articles' vectors into a single "taste" vector.
+const userVectors = readArticles
+  .map((match) => match.values)
+  .filter((values): values is number[] => values !== undefined);
+const meanVec = meanVector(userVectors);
+```
+
+where `meanVector` averages the vectors component by component:
+
+```typescript
 const meanVector = (vectors: number[][]): number[] => {
+  const mean = (values: number[]): number =>
+    values.reduce((a, b) => a + b, 0) / values.length;
   const { length } = vectors[0];
 
-  return Array.from({ length }).map((_, i) =>
-    mean(vectors.map((vec) => vec[i]))
-  );
+  return Array.from({ length }).map((_, i) => mean(vectors.map((v) => v[i])));
 };
-
-// We calculate the mean vector of the results
-// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-const meanVec = meanVector(userVectors!);
 ```
 
 To resolve the recommendations, we'll query the index with the mean vector and filter out the articles that the user has already read.
@@ -239,46 +277,41 @@ const recommendations = await index.query({
 Finally, we'll use `console-table-printer` to print out the recommendations.
 
 ```typescript
-const userPreferences = new Table({
-  columns: [
-    { name: "title", alignment: "left" },
-    { name: "author", alignment: "left" },
-    { name: "section", alignment: "left" },
-  ],
-});
-
-const userRecommendations = new Table({
-  columns: [
-    { name: "title", alignment: "left" },
-    { name: "author", alignment: "left" },
-    { name: "section", alignment: "left" },
-  ],
-});
-
-queryResult?.matches?.slice(0, 10).forEach((result: any) => {
-  const { title, article, publication, section } = result.metadata;
-  userPreferences.addRow({
-    title,
-    article: `${article.slice(0, 70)}...`,
-    publication,
-    section,
+const printArticleTable = (
+  heading: string,
+  matches: ScoredPineconeRecord<ArticleRecord>[]
+) => {
+  const table = new Table({
+    columns: [
+      { name: "title", alignment: "left" },
+      { name: "article", alignment: "left" },
+      { name: "section", alignment: "left" },
+      { name: "publication", alignment: "left" },
+    ],
   });
-});
 
-console.log("========== User Preferences ==========");
-userPreferences.printTable();
+  for (const match of matches) {
+    const { metadata } = match;
+    if (metadata) {
+      const { title, article, section, publication } = metadata;
+      table.addRow({
+        title,
+        article: `${article.slice(0, 70)}...`,
+        section,
+        publication,
+      });
+    }
+  }
 
-recommendations?.matches?.slice(0, 10).forEach((result: any) => {
-  const { title, article, publication, section } = result.metadata;
-  userRecommendations.addRow({
-    title,
-    article: `${article.slice(0, 70)}...`,
-    publication,
-    section,
-  });
-});
-console.log("=========== Recommendations ==========");
-userRecommendations.printTable();
+  console.log(heading);
+  table.printTable();
+};
+
+printArticleTable("========== User Preferences ==========", readArticles);
+printArticleTable(
+  "=========== Recommendations ==========",
+  recommendations.matches ?? []
+);
 ```
 
 ### Query Sports user
@@ -402,3 +435,14 @@ We can see that each user's recommendations have a high similarity to what the u
 Since we used only the title and the content of the article to define the embeddings, and we did not take publications and sections into account, a user may get recommendations from a publication/section that they does not regularly read. You may try adding this information when creating embeddings as well and check your query results then!
 
 Also, you may notice that some articles appear in the recommendations, although the user has already read them. These articles could be removed as part of postprocessing the query results, in case you prefer not to see them in the recommendations.
+
+## Development
+
+The scripts run directly with [`tsx`](https://github.com/privatenumber/tsx), so there's no build step. The following checks run in CI and can be run locally:
+
+```bash
+npm run typecheck    # type-check with tsc (no emit)
+npm run lint         # eslint
+npm run format:check # prettier
+npm test             # vitest
+```
