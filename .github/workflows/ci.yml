@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
 
+# Least-privilege GITHUB_TOKEN: every job here only reads the repo (checkout,
+# install, lint, typecheck, test, audit). Widen per-job if one ever needs more.
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref (e.g. rapid pushes to a PR).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
