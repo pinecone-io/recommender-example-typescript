@@ -105,9 +105,7 @@ async function main() {
   await embedder.init("Xenova/all-MiniLM-L6-v2");
   await embedAndUpsert(clean as unknown as ArticleRecord[], 1);
   progressBar.stop();
-  console.log(
-    `Inserted ${progressBar.getTotal()} documents into index ${indexName}`
-  );
+  console.log(`Inserted ${clean.length} documents into index ${indexName}`);
 }
 
 main().catch((error) => {
