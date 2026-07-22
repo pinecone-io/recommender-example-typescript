@@ -59,7 +59,10 @@ async function main() {
   validateEnvironmentVariables();
 
   const indexName = getEnv("PINECONE_INDEX");
-  const pinecone = new Pinecone();
+  const pinecone = new Pinecone({
+    apiKey: getEnv("PINECONE_API_KEY"),
+    sourceTag: "pinecone:recommender_example_typescript",
+  });
 
   // Ensure the index exists and is ready before we query it.
   try {
