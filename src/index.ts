@@ -29,7 +29,10 @@ const progressBar = new cliProgress.SingleBar(
 const indexName = getEnv("PINECONE_INDEX");
 const indexCloud = getEnv("PINECONE_CLOUD");
 const indexRegion = getEnv("PINECONE_REGION");
-const pinecone = new Pinecone();
+const pinecone = new Pinecone({
+  apiKey: getEnv("PINECONE_API_KEY"),
+  sourceTag: "pinecone:recommender_example_typescript",
+});
 
 // Yields the records in `chunkSize` batches, wrapping each one in a `Document`
 // that carries the article text (`pageContent`) plus the chosen metadata fields.
