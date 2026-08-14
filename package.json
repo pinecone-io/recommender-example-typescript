@@ -22,7 +22,7 @@
     "embeddings",
     "typescript"
   ],
-  "author": "",
+  "author": "Pinecone",
   "license": "MIT",
   "dependencies": {
     "@huggingface/transformers": "^4.2.0",
