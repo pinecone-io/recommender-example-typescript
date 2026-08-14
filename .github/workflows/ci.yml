@@ -22,7 +22,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [20.x, 22.x]
+        node-version: [22.x, 24.x]
 
     steps:
       - uses: actions/checkout@v7
@@ -48,9 +48,9 @@ jobs:
       - name: Test
         run: npm test
 
-  # Surfaces vulnerable dependencies on every change. Non-blocking so a new
-  # advisory in a transitive dependency can't wedge unrelated PRs, but it keeps
-  # the current audit status visible in the run logs.
+  # Fails the build on high/critical advisories in production dependencies.
+  # Scoped to prod deps so a dev-only advisory can't wedge unrelated PRs, and to
+  # high/critical so low/moderate noise doesn't block work.
   audit:
     runs-on: ubuntu-latest
     steps:
@@ -64,5 +64,5 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Audit production dependencies
-        run: npm audit --omit=dev || true
+      - name: Audit production dependencies (fail on high or critical)
+        run: npm audit --audit-level=high --omit=dev
