@@ -5,6 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch: {}
 
 # Least-privilege GITHUB_TOKEN: every job here only reads the repo (checkout,
 # install, lint, typecheck, test, audit). Widen per-job if one ever needs more.
@@ -47,6 +48,33 @@ jobs:
 
       - name: Test
         run: npm test
+
+  # Exercises a real Pinecone upsert/query round-trip (see tests/integration).
+  # Restricted to push/workflow_dispatch — never pull_request — because it's
+  # credentialed and a PR (including from a fork) must not get access to the
+  # PINECONE_API_KEY secret. The test itself also self-skips when the secret
+  # is absent, so a run against a fork or before secrets are configured is a
+  # clean no-op rather than a failure.
+  integration-test:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Integration test (self-skips without PINECONE_API_KEY)
+        run: npm run test:integration
+        env:
+          PINECONE_API_KEY: ${{ secrets.PINECONE_API_KEY }}
+          PINECONE_CLOUD: ${{ secrets.PINECONE_CLOUD }}
+          PINECONE_REGION: ${{ secrets.PINECONE_REGION }}
 
   # Fails the build on high/critical advisories in production dependencies.
   # Scoped to prod deps so a dev-only advisory can't wedge unrelated PRs, and to

@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
     "lint": "eslint src",
     "lint:fix": "npm run lint -- --fix",
     "format": "prettier --write \"**/*.ts\"",
