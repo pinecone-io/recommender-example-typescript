@@ -48,7 +48,7 @@
     "prettier": "^2.8.3",
     "tsx": "^4.23.12",
     "typescript": "^5.0.4",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.12"
   },
   "overrides": {
     "adm-zip": "^0.6.0",
